@@ -121,6 +121,11 @@ Developers → API keys → roll key), even though it's test-mode only.
 
 ## Frontend wiring
 
+This assumes `index.html` / `app.html` / `legal.html` are served from the **same Netlify
+site** as this backend (repo root, alongside `netlify.toml`) — so `/api/*` is same-origin
+and the snippets below use relative paths. If the frontend is ever split onto a different
+domain, switch these to an absolute URL and set `CORS_ORIGIN` accordingly.
+
 The publishable key (`pk_test_...` / `pk_live_...`) is the only Stripe key allowed in the
 frontend. It isn't actually needed for these snippets since Checkout/Portal redirects are
 driven entirely by the backend, but keep it handy if you later add Stripe.js/Elements.
@@ -133,7 +138,7 @@ driven entirely by the backend, but keep it handy if you later add Stripe.js/Ele
 <script>
 document.getElementById('upgrade-pro-monthly').addEventListener('click', async () => {
   const email = localStorage.getItem('tst_email'); // however you track the logged-in user
-  const res = await fetch('https://api.thesigntool.com/api/checkout', {
+  const res = await fetch('/api/checkout', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ plan: 'pro', billing: 'monthly', email }),
@@ -155,7 +160,7 @@ For Team, pass `plan: 'team', billing: 'yearly', seats: <n>` (n ≥ 3).
 <script>
 document.getElementById('manage-billing').addEventListener('click', async () => {
   const email = localStorage.getItem('tst_email');
-  const res = await fetch('https://api.thesigntool.com/api/portal', {
+  const res = await fetch('/api/portal', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email }),
@@ -174,7 +179,7 @@ On the `success_url` page (`app.html?checkout=success&session_id=...`):
 <script>
 const params = new URLSearchParams(location.search);
 if (params.get('checkout') === 'success') {
-  fetch(`https://api.thesigntool.com/api/me?email=${encodeURIComponent(localStorage.getItem('tst_email') || '')}`)
+  fetch(`/api/me?email=${encodeURIComponent(localStorage.getItem('tst_email') || '')}`)
     .then((r) => r.json())
     .then((me) => localStorage.setItem('tst_plan', me.plan));
 }
@@ -184,7 +189,7 @@ if (params.get('checkout') === 'success') {
 **Gating Pro features** — call `/api/me` on load and branch on `plan`:
 
 ```js
-const me = await fetch(`https://api.thesigntool.com/api/me?email=${encodeURIComponent(email)}`).then((r) => r.json());
+const me = await fetch(`/api/me?email=${encodeURIComponent(email)}`).then((r) => r.json());
 const isPro = me.plan === 'pro' || me.plan === 'team';
 const isActive = me.status === 'active';
 if (isPro && isActive) {

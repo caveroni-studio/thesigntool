@@ -1,5 +1,9 @@
 [build]
   functions = "netlify/functions"
+  # Frontend static files (index.html, app.html, legal.html, ...) live at the repo
+  # root alongside the backend code — Netlify publishes everything from here except
+  # the reserved /netlify/functions and /api paths.
+  publish = "."
 
 [[redirects]]
   from = "/api/*"
