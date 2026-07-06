@@ -16,6 +16,15 @@ function publicUser(user) {
   return { email: user.email, name: user.name, plan: user.plan };
 }
 
+// Lets the frontend show "coming soon" / disable the Google & Microsoft buttons
+// instead of linking to an OAuth flow that isn't configured yet.
+router.get('/auth/providers', (req, res) => {
+  res.json({
+    google: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    microsoft: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET),
+  });
+});
+
 router.post('/auth/signup', async (req, res) => {
   try {
     const { email, password, name } = req.body || {};

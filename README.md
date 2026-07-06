@@ -111,6 +111,7 @@ npm run dev
 | GET | `/api/auth/session` | — (reads cookie) | `{ email, name, plan }` or 401 |
 | GET | `/api/auth/google` | — | redirects to Google, then back to `/app.html` |
 | GET | `/api/auth/microsoft` | — | redirects to Microsoft, then back to `/app.html` |
+| GET | `/api/auth/providers` | — | `{ google, microsoft }` — whether those OAuth env vars are set |
 | POST | `/api/checkout` | `{ plan: "pro"\|"team", billing: "monthly"\|"yearly", seats?, email? }` | `{ url }` |
 | POST | `/api/portal` | `{ email }` | `{ url }` |
 | POST | `/api/webhook` | (raw Stripe event) | `{ received: true }` |
@@ -133,9 +134,58 @@ than trusting it outright.
 ## Deploy — Netlify
 
 1. `netlify deploy` (or connect the repo).
-2. Add the same env vars under **Site settings → Environment variables**.
+2. Add the env vars below under **Site settings → Environment variables**.
 3. `netlify.toml` redirects `/api/*` to the bundled function in `netlify/functions/api.js`.
 4. Set the webhook URL in Stripe to `https://<your-netlify-domain>/api/webhook`.
+5. Run `npm run db:migrate` (see below) — required, including for this update, since it
+   adds columns to `users`.
+
+### Netlify environment variables checklist
+
+Everything below is also in `.env.example`. Values with no default must be filled in.
+
+**Stripe**
+| Var | Notes |
+|---|---|
+| `STRIPE_SECRET_KEY` | `sk_test_...` or `sk_live_...` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_...` from the Stripe webhook endpoint |
+| `STRIPE_PRICE_PRO_MONTHLY` / `STRIPE_PRICE_PRO_YEARLY` / `STRIPE_PRICE_TEAM_YEARLY` | from `npm run stripe:setup` |
+| `TEAM_MIN_SEATS` | `3` |
+
+**Database**
+| Var | Notes |
+|---|---|
+| `DATABASE_URL` | Postgres connection string (Supabase/Neon/Vercel Postgres/...) |
+
+**Auth / sessions**
+| Var | Notes |
+|---|---|
+| `JWT_SECRET` | random string, see "Auth" section above — required, no default |
+
+**Google OAuth** (optional — leave blank to keep the button disabled)
+| Var | Notes |
+|---|---|
+| `GOOGLE_CLIENT_ID` | from Google Cloud Console |
+| `GOOGLE_CLIENT_SECRET` | from Google Cloud Console |
+
+**Microsoft OAuth** (optional — leave blank to keep the button disabled)
+| Var | Notes |
+|---|---|
+| `MICROSOFT_CLIENT_ID` | from Azure Portal |
+| `MICROSOFT_CLIENT_SECRET` | from Azure Portal |
+
+**Frontend / CORS**
+| Var | Notes |
+|---|---|
+| `FRONTEND_URL` | `https://www.thesigntool.com` — also the OAuth/Checkout/Portal return URL |
+| `CORS_ORIGIN` | `https://www.thesigntool.com` (comma-separated if more than one) |
+
+### Do I need to run the migration after this update?
+
+Yes. This update adds `name`, `password_hash`, `google_id`, `microsoft_id` to `users`.
+Run `npm run db:migrate` (which just (re-)applies `scripts/schema.sql`, so it's safe to
+run again even if you've already run it before) once `DATABASE_URL` and the other vars
+above are set.
 
 ## Switching from test to live keys
 
@@ -155,78 +205,31 @@ Developers → API keys → roll key), even though it's test-mode only.
 
 ## Frontend wiring
 
-This assumes `index.html` / `app.html` / `legal.html` are served from the **same Netlify
-site** as this backend (repo root, alongside `netlify.toml`) — so `/api/*` is same-origin
-and the snippets below use relative paths. If the frontend is ever split onto a different
-domain, switch these to an absolute URL and set `CORS_ORIGIN` accordingly.
+`index.html` / `app.html` / `legal.html` are served from the **same Netlify site** as this
+backend (repo root, alongside `netlify.toml`), so `/api/*` is same-origin and every fetch
+below uses a relative path with `credentials: "same-origin"`. This is already implemented
+in `app.html` — nothing left to wire up manually. What it does, concretely:
 
-The publishable key (`pk_test_...` / `pk_live_...`) is the only Stripe key allowed in the
-frontend. It isn't actually needed for these snippets since Checkout/Portal redirects are
-driven entirely by the backend, but keep it handy if you later add Stripe.js/Elements.
+- **On page load** (`componentDidMount`): calls `GET /api/auth/session`. If it returns 200,
+  the header shows the account name/email instead of "Sign in" — this is what makes login
+  survive a page refresh and the redirect back from Google/Microsoft OAuth. If it 401s,
+  the header shows "Sign in" and nothing is read from `localStorage` for this — there is no
+  local-only fake-login fallback anywhere in the auth flow.
+- Also on load: calls `GET /api/auth/providers` to decide whether the Google/Microsoft
+  buttons are clickable. If a provider isn't configured, its button is dimmed and clicking
+  it shows "Google/Microsoft sign-in coming soon" instead of navigating anywhere.
+- **Sign up / log in** (the account modal's email+password form): `POST /api/auth/signup`
+  or `POST /api/auth/login`. On success the header updates from the response body (not from
+  a locally-fabricated name). On failure it shows the backend's actual error message (e.g.
+  "Invalid email or password") — it does not fall back to a fake logged-in state.
+- **Sign out**: the account menu (click the header button while signed in) has a "Log out"
+  button that calls `POST /api/auth/logout`, then clears the local `user` state.
+- **Manage billing**: same account menu, calls `POST /api/portal` — resolves to the signed-in
+  account via the session cookie, not any local field.
+- **Upgrade to Pro/Team**: the existing upgrade modal's checkout button calls
+  `POST /api/checkout` with `{ plan, billing, seats, email }`; the session cookie (if any)
+  still wins server-side over that `email`, per the `/api/checkout` behavior described above.
 
-**"Upgrade to Pro" button** (`app.html`):
-
-```html
-<button id="upgrade-pro-monthly">Upgrade to Pro — $9/mo</button>
-
-<script>
-document.getElementById('upgrade-pro-monthly').addEventListener('click', async () => {
-  const email = localStorage.getItem('tst_email'); // however you track the logged-in user
-  const res = await fetch('/api/checkout', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ plan: 'pro', billing: 'monthly', email }),
-  });
-  const { url, error } = await res.json();
-  if (error) return alert(error);
-  window.location = url;
-});
-</script>
-```
-
-For Team, pass `plan: 'team', billing: 'yearly', seats: <n>` (n ≥ 3).
-
-**"Manage billing" link** (account menu):
-
-```html
-<button id="manage-billing">Manage billing</button>
-
-<script>
-document.getElementById('manage-billing').addEventListener('click', async () => {
-  const email = localStorage.getItem('tst_email');
-  const res = await fetch('/api/portal', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  const { url, error } = await res.json();
-  if (error) return alert(error);
-  window.location = url;
-});
-</script>
-```
-
-**Capturing the email after checkout** (Checkout collects it even if you didn't pass one).
-On the `success_url` page (`app.html?checkout=success&session_id=...`):
-
-```html
-<script>
-const params = new URLSearchParams(location.search);
-if (params.get('checkout') === 'success') {
-  fetch(`/api/me?email=${encodeURIComponent(localStorage.getItem('tst_email') || '')}`)
-    .then((r) => r.json())
-    .then((me) => localStorage.setItem('tst_plan', me.plan));
-}
-</script>
-```
-
-**Gating Pro features** — call `/api/me` on load and branch on `plan`:
-
-```js
-const me = await fetch(`/api/me?email=${encodeURIComponent(email)}`).then((r) => r.json());
-const isPro = me.plan === 'pro' || me.plan === 'team';
-const isActive = me.status === 'active';
-if (isPro && isActive) {
-  // unlock all templates, hide the "made with TheSignTool" badge, enable bulk deploy
-}
-```
+If you ever split the frontend onto a different domain than the backend, these become
+cross-origin requests — add that origin to `CORS_ORIGIN` and switch the relative paths to
+an absolute backend URL (the `BACKEND_URL` constant near the top of the app's script).
