@@ -69,7 +69,33 @@ For local testing:
 stripe listen --forward-to localhost:3000/api/webhook
 ```
 
-## 5. Run locally
+## 5. Auth (email/password + Google/Microsoft)
+
+Generate a session-signing secret and put it in `JWT_SECRET`:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+```
+
+Email/password signup and login work with no further setup. Google and Microsoft are
+optional — leave their env vars blank and those two buttons return "not configured yet"
+instead of erroring.
+
+**Google**: Google Cloud Console → APIs & Services → Credentials → Create Credentials →
+OAuth client ID → Web application. Authorized redirect URI:
+`{FRONTEND_URL}/api/auth/google/callback`. Copy the client ID/secret into
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+
+**Microsoft**: Azure Portal → App registrations → New registration → "Accounts in any
+organizational directory and personal Microsoft accounts". Redirect URI (Web platform):
+`{FRONTEND_URL}/api/auth/microsoft/callback`. Copy the Application (client) ID into
+`MICROSOFT_CLIENT_ID`, and create a client secret (Certificates & secrets) for
+`MICROSOFT_CLIENT_SECRET`.
+
+Sessions are a signed JWT in an `httpOnly` cookie (`tst_session`, 30 days) — no server-side
+session store to manage.
+
+## 6. Run locally
 
 ```bash
 npm run dev
@@ -79,14 +105,22 @@ npm run dev
 
 | Method | Path | Body / Query | Returns |
 |---|---|---|---|
+| POST | `/api/auth/signup` | `{ email, password, name? }` | `{ email, name, plan }` + sets session cookie |
+| POST | `/api/auth/login` | `{ email, password }` | `{ email, name, plan }` + sets session cookie |
+| POST | `/api/auth/logout` | — | `{ ok: true }`, clears session cookie |
+| GET | `/api/auth/session` | — (reads cookie) | `{ email, name, plan }` or 401 |
+| GET | `/api/auth/google` | — | redirects to Google, then back to `/app.html` |
+| GET | `/api/auth/microsoft` | — | redirects to Microsoft, then back to `/app.html` |
 | POST | `/api/checkout` | `{ plan: "pro"\|"team", billing: "monthly"\|"yearly", seats?, email? }` | `{ url }` |
 | POST | `/api/portal` | `{ email }` | `{ url }` |
 | POST | `/api/webhook` | (raw Stripe event) | `{ received: true }` |
 | GET | `/api/me` | `?email=` | `{ email, plan, status, seats, current_period_end }` |
 
-Note: there's no user-auth system specified for the frontend yet, so `/api/me` and
-`/api/portal` key off `email`. Once you add real auth, swap the `email` lookup for
-whatever identifies the logged-in user (session/JWT) server-side.
+`checkout`, `portal`, and `me` all check the session cookie first and only fall back to
+the `email` in the request when there's no signed-in session (guest checkout still works).
+This matters for `/api/portal` in particular — it opens Stripe's billing portal for
+whichever account it resolves to, so a real session beats a client-supplied email rather
+than trusting it outright.
 
 ## Deploy — Vercel
 

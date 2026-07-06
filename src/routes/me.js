@@ -1,13 +1,14 @@
 const express = require('express');
 const { getUserByEmail } = require('../lib/db');
+const { getSessionEmail } = require('../lib/auth');
 
 const router = express.Router();
 
 router.get('/me', async (req, res) => {
   try {
-    const email = req.query.email;
+    const email = getSessionEmail(req) || req.query.email;
     if (!email) {
-      return res.status(400).json({ error: 'email query param is required' });
+      return res.status(400).json({ error: 'Sign in, or pass an email query param' });
     }
 
     const user = await getUserByEmail(email);

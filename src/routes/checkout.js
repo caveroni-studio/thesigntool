@@ -1,12 +1,16 @@
 const express = require('express');
 const stripe = require('../lib/stripe');
 const { resolvePrice, TEAM_MIN_SEATS } = require('../lib/plans');
+const { getSessionEmail } = require('../lib/auth');
 
 const router = express.Router();
 
 router.post('/checkout', async (req, res) => {
   try {
-    const { plan, billing, seats, email } = req.body || {};
+    const { plan, billing, seats, email: bodyEmail } = req.body || {};
+    // A signed-in session is the real identity; it wins over whatever email the
+    // (unrelated) signature form on the page happens to have in it.
+    const email = getSessionEmail(req) || bodyEmail;
 
     if (!['pro', 'team'].includes(plan)) {
       return res.status(400).json({ error: 'plan must be "pro" or "team"' });

@@ -69,4 +69,50 @@ async function updateUserByCustomerId(customerId, fields) {
   return rows[0] || null;
 }
 
-module.exports = { pool, getUserByEmail, getUserByCustomerId, upsertUserByEmail, updateUserByCustomerId };
+async function createUserWithPassword({ email, passwordHash, name }) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (email, name, password_hash, plan, status, seats)
+     VALUES ($1, $2, $3, 'free', 'active', 1)
+     RETURNING *`,
+    [email, name || null, passwordHash]
+  );
+  return rows[0];
+}
+
+async function setUserPassword(email, passwordHash, name) {
+  const { rows } = await pool.query(
+    `UPDATE users SET password_hash = $2, name = COALESCE($3, name), updated_at = now()
+     WHERE email = $1
+     RETURNING *`,
+    [email, passwordHash, name || null]
+  );
+  return rows[0];
+}
+
+// Used by the Google/Microsoft callbacks. Same email across auth methods is treated
+// as the same account — first OAuth login for a new email creates the row.
+async function upsertOAuthUser({ email, name, googleId, microsoftId }) {
+  const { rows } = await pool.query(
+    `INSERT INTO users (email, name, google_id, microsoft_id, plan, status, seats)
+     VALUES ($1, $2, $3, $4, 'free', 'active', 1)
+     ON CONFLICT (email) DO UPDATE SET
+       name = COALESCE(users.name, EXCLUDED.name),
+       google_id = COALESCE(EXCLUDED.google_id, users.google_id),
+       microsoft_id = COALESCE(EXCLUDED.microsoft_id, users.microsoft_id),
+       updated_at = now()
+     RETURNING *`,
+    [email, name || null, googleId || null, microsoftId || null]
+  );
+  return rows[0];
+}
+
+module.exports = {
+  pool,
+  getUserByEmail,
+  getUserByCustomerId,
+  upsertUserByEmail,
+  updateUserByCustomerId,
+  createUserWithPassword,
+  setUserPassword,
+  upsertOAuthUser,
+};

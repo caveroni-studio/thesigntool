@@ -1,14 +1,17 @@
 const express = require('express');
 const stripe = require('../lib/stripe');
 const { getUserByEmail } = require('../lib/db');
+const { getSessionEmail } = require('../lib/auth');
 
 const router = express.Router();
 
 router.post('/portal', async (req, res) => {
   try {
-    const { email } = req.body || {};
+    // Billing portal grants access to payment methods/invoices, so a real session
+    // takes priority; only fall back to a client-supplied email when signed out.
+    const email = getSessionEmail(req) || (req.body && req.body.email);
     if (!email) {
-      return res.status(400).json({ error: 'email is required' });
+      return res.status(400).json({ error: 'Sign in, or pass an email, to manage billing' });
     }
 
     const user = await getUserByEmail(email);

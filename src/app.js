@@ -1,7 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 
+const authRoute = require('./routes/auth');
 const checkoutRoute = require('./routes/checkout');
 const portalRoute = require('./routes/portal');
 const meRoute = require('./routes/me');
@@ -23,8 +25,11 @@ app.use(
       }
       return callback(new Error('Not allowed by CORS'));
     },
+    credentials: true,
   })
 );
+
+app.use(cookieParser());
 
 // Stripe needs the raw request body to verify webhook signatures. Scoped to exactly
 // /api/webhook (not all of /api) so it doesn't swallow JSON bodies on the other routes,
@@ -32,6 +37,7 @@ app.use(
 app.use('/api/webhook', express.raw({ type: 'application/json' }), webhookRoute);
 
 app.use(express.json());
+app.use('/api', authRoute);
 app.use('/api', checkoutRoute);
 app.use('/api', portalRoute);
 app.use('/api', meRoute);
