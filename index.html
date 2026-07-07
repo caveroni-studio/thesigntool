@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <title>TheSignTool — On-brand email signatures for teams &amp; freelancers</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='100' height='100' rx='20' fill='%230b0c10'%3E%3C/rect%3E%3Crect x='20' y='22' width='60' height='56' rx='14' fill='oklch(0.62 0.2 300)'%3E%3C/rect%3E%3Cpath d='M32 55 q7 -16 13 0 t13 0 t10 0' fill='none' stroke='%230b0c10' stroke-width='5' stroke-linecap='round'%3E%3C/path%3E%3C/svg%3E">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { background: #faf9f5; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
@@ -34,15 +35,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   const loading = document.getElementById('__bundler_loading');
   function setStatus(msg) { if (loading) loading.textContent = msg; }
 
-  // Error sink persists across replaceWith since it's on window, not the DOM.
+  // Log to console for our own debugging; don't show a raw error banner to real visitors
+  // (harmless things like a not-yet-hydrated placeholder image request also fire 'error').
   window.addEventListener('error', function(e) {
-    var p = document.body || document.documentElement;
-    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));
-    d.id = '__bundler_err';
-    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';
-    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +
-      '[bundle] ' + (e.message || e.type) +
-      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
+    console.error('[bundle]', e.message || e.type, e.filename ? '(' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
   }, true);
 
   try {
